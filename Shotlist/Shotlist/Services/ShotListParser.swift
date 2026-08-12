@@ -20,10 +20,22 @@ enum ShotListParser {
         var shotOrder = 0
         var lastRootShotID: UUID?
         var skippedTitleLine = projectTitle == nil
+        var orphanCategory: ShotCategory?
 
         for line in lines where !line.isEmpty {
             if let parsed = extractShot(from: line) {
-                guard let category = currentCategory else { continue }
+                let category: ShotCategory
+                if let current = currentCategory {
+                    category = current
+                } else {
+                    if orphanCategory == nil {
+                        orphanCategory = ShotCategory(name: "UNCATEGORIZED", sortOrder: -1)
+                        categories.insert(orphanCategory!, at: 0)
+                        categoryOrder = max(categoryOrder, 0)
+                    }
+                    category = orphanCategory!
+                    hasSeenCategory = true
+                }
 
                 let title = parsed.title
                 var parentID: UUID?
@@ -47,6 +59,10 @@ enum ShotListParser {
                             break
                         }
                     }
+                }
+
+                if locationKey == nil {
+                    locationKey = ShootLocation.unmappedKey
                 }
 
                 let shot = Shot(
@@ -98,6 +114,15 @@ enum ShotListParser {
             }
         }
 
+        // Re-number orphan category to end if real categories exist
+        if let orphan = orphanCategory,
+           let index = categories.firstIndex(where: { $0.id == orphan.id }),
+           categories.count > 1 {
+            var moved = categories.remove(at: index)
+            moved.sortOrder = categoryOrder
+            categories.append(moved)
+        }
+
         return ShotListProject(
             title: inferredTitle ?? "Shot List",
             brief: brief,
@@ -112,6 +137,10 @@ enum ShotListParser {
     }
 
     private static func extractShot(from line: String) -> ParsedShot? {
+        if let markdown = extractMarkdownCheckbox(from: line) {
+            return markdown
+        }
+
         for prefix in completedPrefixes {
             if line.hasPrefix(prefix) {
                 let title = String(line.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
@@ -131,6 +160,22 @@ enum ShotListParser {
             return title.isEmpty ? nil : ParsedShot(title: title, isCompleted: false)
         }
 
+        return nil
+    }
+
+    private static func extractMarkdownCheckbox(from line: String) -> ParsedShot? {
+        let patterns: [(String, Bool)] = [
+            (#"^\[x\]\s+"#, true),
+            (#"^\[X\]\s+"#, true),
+            (#"^\[\s\]\s+"#, false),
+            (#"^\[\]\s+"#, false),
+        ]
+        for (pattern, completed) in patterns {
+            if let match = line.range(of: pattern, options: .regularExpression) {
+                let title = String(line[match.upperBound...]).trimmingCharacters(in: .whitespaces)
+                return title.isEmpty ? nil : ParsedShot(title: title, isCompleted: completed)
+            }
+        }
         return nil
     }
 
@@ -164,8 +209,6 @@ enum ShotListParser {
         return lowercaseRatio > 0.4
     }
 
-    /// Only skip the first pasted title line when it matches the user-supplied project title.
-    /// Must not treat category headers (DRONE, NORDIS, etc.) as title duplicates.
     private static func isLikelyPastedTitle(_ line: String, projectTitle: String?) -> Bool {
         guard let projectTitle, !projectTitle.isEmpty else { return false }
 

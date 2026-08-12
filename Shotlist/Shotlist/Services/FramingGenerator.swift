@@ -98,7 +98,7 @@ enum FramingGenerator {
         weather: WeatherCondition,
         frameRate: FrameRate
     ) -> (aperture: String, iso: String, nd: String?) {
-        let base: (String, String, String?) = switch (timeOfDay, weather) {
+        var base: (String, String, String?) = switch (timeOfDay, weather) {
         case (.goldenHour, .sunny):
             ("f/4 – f/5.6", "100–200", "ND 0.6 optional")
         case (.goldenHour, _):
@@ -122,7 +122,17 @@ enum FramingGenerator {
         default:
             ("f/4", "400", nil)
         }
-        _ = frameRate
+
+        // Higher frame rates need more light (or less ND) for the same shutter angle.
+        if frameRate.rawValue >= 50 {
+            if let nd = base.2 {
+                base.2 = "\(nd) — reduce 1–2 stops for \(frameRate.rawValue)fps"
+            } else if timeOfDay == .midday || timeOfDay == .goldenHour {
+                base.2 = "ND optional at \(frameRate.rawValue)fps (faster shutter)"
+            }
+            base.1 = "Raise ISO ~1 stop vs \(frameRate.rawValue / 2)fps if needed"
+        }
+
         return base
     }
 

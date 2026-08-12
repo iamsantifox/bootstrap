@@ -32,6 +32,10 @@ enum ShotSize: String, Codable, CaseIterable, Identifiable {
         case .unknown: return 4
         }
     }
+
+    static var editableCases: [ShotSize] {
+        allCases
+    }
 }
 
 enum CameraAngle: String, Codable, CaseIterable, Identifiable {
@@ -111,8 +115,12 @@ struct Shot: Identifiable, Codable, Hashable {
 
     var isVariant: Bool { parentShotID != nil }
 
+    var isUnmapped: Bool {
+        locationKey == nil || locationKey == ShootLocation.unmappedKey
+    }
+
     func estimatedMinutes(categoryName: String) -> Int {
-        if categoryName.uppercased().contains("DRONE") { return 12 }
+        if categoryName.uppercased().contains("DRONE") { return 8 }
         let lower = title.lowercased()
         if lower.contains("valo vaihtuu") || lower.contains("liikennevalo") { return 10 }
         if shotSize != .unknown { return shotSize.estimatedMinutes }
@@ -147,9 +155,11 @@ struct ShotListProject: Identifiable, Codable {
     var categories: [ShotCategory]
     var shots: [Shot]
     var routeStartLocationKey: String?
+    /// Manual stop order by location key. When set, route planner respects it.
+    var customRouteOrder: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case id, title, brief, createdAt, categories, shots, routeStartLocationKey
+        case id, title, brief, createdAt, categories, shots, routeStartLocationKey, customRouteOrder
     }
 
     init(
@@ -159,7 +169,8 @@ struct ShotListProject: Identifiable, Codable {
         createdAt: Date = Date(),
         categories: [ShotCategory] = [],
         shots: [Shot] = [],
-        routeStartLocationKey: String? = "toolontori"
+        routeStartLocationKey: String? = "toolontori",
+        customRouteOrder: [String]? = nil
     ) {
         self.id = id
         self.title = title
@@ -168,6 +179,7 @@ struct ShotListProject: Identifiable, Codable {
         self.categories = categories
         self.shots = shots
         self.routeStartLocationKey = routeStartLocationKey
+        self.customRouteOrder = customRouteOrder
     }
 
     init(from decoder: Decoder) throws {
@@ -179,6 +191,7 @@ struct ShotListProject: Identifiable, Codable {
         categories = try container.decode([ShotCategory].self, forKey: .categories)
         shots = try container.decode([Shot].self, forKey: .shots)
         routeStartLocationKey = try container.decodeIfPresent(String.self, forKey: .routeStartLocationKey) ?? "toolontori"
+        customRouteOrder = try container.decodeIfPresent([String].self, forKey: .customRouteOrder)
     }
 
     func shots(in category: ShotCategory) -> [Shot] {
@@ -199,11 +212,23 @@ struct ShotListProject: Identifiable, Codable {
         shots.count
     }
 
+    func categoryShotCount(_ category: ShotCategory) -> Int {
+        shots(in: category).count
+    }
+
+    func categoryCompletedCount(_ category: ShotCategory) -> Int {
+        shots(in: category).filter(\.isCompleted).count
+    }
+
     var rootShots: [Shot] {
         shots.filter { $0.parentShotID == nil }.sorted { ($0.routeOrder ?? $0.sortOrder) < ($1.routeOrder ?? $1.sortOrder) }
     }
 
     func variants(of shot: Shot) -> [Shot] {
         shots.filter { $0.parentShotID == shot.id }.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    var unmappedIncompleteCount: Int {
+        shots.filter { !$0.isCompleted && $0.isUnmapped }.count
     }
 }

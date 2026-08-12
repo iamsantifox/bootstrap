@@ -96,9 +96,9 @@ enum LensOption: String, CaseIterable, Identifiable, Codable {
     static func availableLenses(for camera: CameraBody) -> [LensOption] {
         switch camera {
         case .djiMini4Pro:
-            return [.droneWide, .wide24, .standard35]
+            return [.droneWide]
         case .iphone15Pro:
-            return [.phoneWide, .phoneTele, .standard35]
+            return [.phoneWide, .phoneTele]
         default:
             return [.ultraWide14, .wide24, .standard35, .normal50, .portrait85, .tele135, .tele200, .macro100]
         }

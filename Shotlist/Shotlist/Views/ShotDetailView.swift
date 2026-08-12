@@ -8,6 +8,7 @@ struct ShotDetailView: View {
     @State private var localSettings: FramingSettings = .default
     @State private var notes: String = ""
     @State private var suggestion: FramingSuggestion?
+    @State private var notesSaveTask: Task<Void, Never>?
 
     private var liveShot: Shot {
         store.selectedProject?.shots.first { $0.id == shot.id } ?? shot
@@ -17,17 +18,39 @@ struct ShotDetailView: View {
         List {
             Section("Shot") {
                 LabeledContent("Category", value: categoryName)
-                Text(liveShot.title)
-                    .font(.body)
-                if liveShot.shotSize != .unknown {
-                    LabeledContent("Shot size", value: liveShot.shotSize.displayName)
+                TextField("Title", text: Binding(
+                    get: { liveShot.title },
+                    set: { store.updateShotMetadata(liveShot, title: $0) }
+                ))
+
+                Picker("Shot size", selection: Binding(
+                    get: { liveShot.shotSize },
+                    set: { store.updateShotMetadata(liveShot, shotSize: $0) }
+                )) {
+                    ForEach(ShotSize.allCases) { size in
+                        Text(size.displayName).tag(size)
+                    }
                 }
-                if liveShot.cameraAngle != .unknown {
-                    LabeledContent("Angle", value: liveShot.cameraAngle.rawValue)
+
+                Picker("Angle", selection: Binding(
+                    get: { liveShot.cameraAngle },
+                    set: { store.updateShotMetadata(liveShot, cameraAngle: $0) }
+                )) {
+                    ForEach(CameraAngle.allCases) { angle in
+                        Text(angle.rawValue).tag(angle)
+                    }
                 }
-                if let key = liveShot.locationKey, let location = ShootLocation.lookup(key: key) {
-                    LabeledContent("Location", value: location.name)
+
+                Picker("Location", selection: Binding(
+                    get: { liveShot.locationKey ?? ShootLocation.unmappedKey },
+                    set: { store.updateShotMetadata(liveShot, locationKey: $0) }
+                )) {
+                    Text("Needs location").tag(ShootLocation.unmappedKey)
+                    ForEach(ShootLocation.assignableCatalog) { location in
+                        Text(location.name).tag(location.key)
+                    }
                 }
+
                 LabeledContent("Est. time", value: "\(liveShot.estimatedMinutes(categoryName: categoryName)) min")
             }
 
@@ -129,7 +152,12 @@ struct ShotDetailView: View {
                 TextField("Add shoot notes…", text: $notes, axis: .vertical)
                     .lineLimit(3...6)
                     .onChange(of: notes) { _, newValue in
-                        store.updateShotNotes(liveShot, notes: newValue)
+                        notesSaveTask?.cancel()
+                        notesSaveTask = Task {
+                            try? await Task.sleep(nanoseconds: 400_000_000)
+                            guard !Task.isCancelled else { return }
+                            store.updateShotNotes(liveShot, notes: newValue)
+                        }
                     }
             }
         }
@@ -150,6 +178,12 @@ struct ShotDetailView: View {
             }
             notes = liveShot.notes
             regenerate()
+        }
+        .onDisappear {
+            notesSaveTask?.cancel()
+            if notes != liveShot.notes {
+                store.updateShotNotes(liveShot, notes: notes)
+            }
         }
     }
 

@@ -19,7 +19,7 @@ struct ImportShotListView: View {
             Section {
                 ZStack(alignment: .topLeading) {
                     if pastedText.isEmpty {
-                        Text("Paste your shot list here…\n\nCategories in CAPS, shots with ☐ or - prefixes.")
+                        Text("Paste your shot list here…\n\nCategories in CAPS, shots with ☐, [ ], or - prefixes.")
                             .foregroundStyle(.tertiary)
                             .padding(.top, 8)
                             .padding(.leading, 4)
@@ -31,13 +31,19 @@ struct ImportShotListView: View {
             } header: {
                 Text("Shot List")
             } footer: {
-                Text("Supports checkbox (☐), bullet (-), and numbered lists. ALL CAPS lines become categories.")
+                Text("Supports ☐ / [ ] / [x], bullets, and numbered lists. ALL CAPS lines become categories.")
             }
 
             Section {
+                if let preview = previewProject {
+                    LabeledContent("Categories", value: "\(preview.categories.count)")
+                    LabeledContent("Shots", value: "\(preview.shots.count)")
+                }
+
                 Button("Load Sample (HIFK Töölö)") {
                     pastedText = SampleData.hifkTooloShotList
                     projectTitle = "HIFK-FILMI – B-ROLL Töölö"
+                    previewProject = nil
                 }
 
                 Button("Preview Parse") {
@@ -50,10 +56,7 @@ struct ImportShotListView: View {
                 .disabled(pastedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                 Button("Create Shot List") {
-                    let title = projectTitle.isEmpty ? nil : projectTitle
-                    store.importFromPaste(pastedText, title: title)
-                    pastedText = ""
-                    projectTitle = ""
+                    createFromPaste()
                 }
                 .disabled(pastedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .fontWeight(.semibold)
@@ -74,10 +77,24 @@ struct ImportShotListView: View {
                             ToolbarItem(placement: .cancellationAction) {
                                 Button("Close") { showPreview = false }
                             }
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Create") {
+                                    createFromPaste()
+                                    showPreview = false
+                                }
+                            }
                         }
                 }
             }
         }
+    }
+
+    private func createFromPaste() {
+        let title = projectTitle.isEmpty ? nil : projectTitle
+        store.importFromPaste(pastedText, title: title)
+        pastedText = ""
+        projectTitle = ""
+        previewProject = nil
     }
 }
 

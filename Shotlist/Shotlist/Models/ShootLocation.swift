@@ -18,6 +18,8 @@ struct ShootLocation: Identifiable, Hashable, Codable {
         CLLocation(latitude: latitude, longitude: longitude)
     }
 
+    static let unmappedKey = "unmapped"
+
     static let catalog: [ShootLocation] = [
         ShootLocation(
             key: "toolontori",
@@ -75,7 +77,20 @@ struct ShootLocation: Identifiable, Hashable, Codable {
             longitude: 24.9250,
             keywords: ["töölö", "toolo", "kivitalo", "kaupunkitunnelma"]
         ),
+        ShootLocation(
+            key: unmappedKey,
+            name: "Needs location",
+            latitude: 60.1802,
+            longitude: 24.9240,
+            keywords: []
+        ),
     ]
+
+    static var assignableCatalog: [ShootLocation] {
+        catalog.filter { $0.key != unmappedKey }
+    }
+
+    var isUnmapped: Bool { key == Self.unmappedKey }
 
     static func lookup(key: String) -> ShootLocation? {
         catalog.first { $0.key == key }

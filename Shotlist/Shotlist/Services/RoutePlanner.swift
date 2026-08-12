@@ -16,13 +16,14 @@ enum RoutePlanner {
             let categoryName = project.category(for: shot)?.name ?? ""
             let key = shot.locationKey
                 ?? LocationExtractor.resolveLocationKey(title: shot.title, categoryName: categoryName)
-                ?? "toolo"
+                ?? ShootLocation.unmappedKey
             locationBuckets[key, default: []].append((shot, categoryName))
         }
 
         let orderedKeys = optimizeLocationOrder(
             keys: Array(locationBuckets.keys),
-            startKey: startKey
+            startKey: startKey,
+            customOrder: project.customRouteOrder
         )
 
         var stops: [RouteStop] = []
@@ -35,14 +36,17 @@ enum RoutePlanner {
                   let bucket = locationBuckets[key] else { continue }
 
             let walkMinutes: Int
-            if isFirstStop {
-                // Include walk from chosen start point when the first shoot stop differs.
+            if location.isUnmapped {
+                walkMinutes = isFirstStop ? 0 : 5
+            } else if isFirstStop {
                 if location.key == previousLocation.key {
                     walkMinutes = 0
                 } else {
                     let meters = previousLocation.clLocation.distance(from: location.clLocation)
                     walkMinutes = max(1, Int(ceil(meters / walkingMetersPerMinute)))
                 }
+            } else if previousLocation.isUnmapped {
+                walkMinutes = 5
             } else {
                 let meters = previousLocation.clLocation.distance(from: location.clLocation)
                 walkMinutes = max(1, Int(ceil(meters / walkingMetersPerMinute)))
@@ -97,23 +101,51 @@ enum RoutePlanner {
         return updated
     }
 
-    private static func optimizeLocationOrder(keys: [String], startKey: String) -> [String] {
+    private static func optimizeLocationOrder(
+        keys: [String],
+        startKey: String,
+        customOrder: [String]?
+    ) -> [String] {
+        guard !keys.isEmpty else { return [] }
+
+        let keySet = Set(keys)
+        if let customOrder {
+            var ordered = customOrder.filter { keySet.contains($0) }
+            let missing = keys.filter { !ordered.contains($0) }
+            // Append any new locations with nearest-neighbor from the last custom stop.
+            if !missing.isEmpty {
+                let seed = ordered.last ?? startKey
+                ordered.append(contentsOf: nearestNeighborOrder(keys: missing, startKey: seed))
+            }
+            // Keep unmapped last unless user explicitly ordered it.
+            if ordered.contains(ShootLocation.unmappedKey),
+               !(customOrder.contains(ShootLocation.unmappedKey)) {
+                ordered.removeAll { $0 == ShootLocation.unmappedKey }
+                ordered.append(ShootLocation.unmappedKey)
+            }
+            return ordered
+        }
+
+        var auto = nearestNeighborOrder(keys: keys.filter { $0 != ShootLocation.unmappedKey }, startKey: startKey)
+        if keys.contains(ShootLocation.unmappedKey) {
+            auto.append(ShootLocation.unmappedKey)
+        }
+        return auto
+    }
+
+    private static func nearestNeighborOrder(keys: [String], startKey: String) -> [String] {
         guard !keys.isEmpty else { return [] }
 
         var remaining = Set(keys)
         var ordered: [String] = []
-
-        let startLocation = ShootLocation.lookup(key: startKey) ?? ShootLocation.catalog[0]
+        let startLocation = ShootLocation.lookup(key: startKey) ?? ShootLocation.assignableCatalog[0]
 
         let currentKey: String
         if remaining.contains(startKey) {
             currentKey = startKey
         } else {
             currentKey = remaining.min { lhs, rhs in
-                guard let locL = ShootLocation.lookup(key: lhs),
-                      let locR = ShootLocation.lookup(key: rhs) else { return false }
-                return startLocation.clLocation.distance(from: locL.clLocation)
-                    < startLocation.clLocation.distance(from: locR.clLocation)
+                distance(from: startLocation, toKey: lhs) < distance(from: startLocation, toKey: rhs)
             } ?? keys[0]
         }
 
@@ -124,10 +156,7 @@ enum RoutePlanner {
         while !remaining.isEmpty {
             guard let current = ShootLocation.lookup(key: cursor) else { break }
             let nearest = remaining.min { lhs, rhs in
-                guard let locL = ShootLocation.lookup(key: lhs),
-                      let locR = ShootLocation.lookup(key: rhs) else { return false }
-                return current.clLocation.distance(from: locL.clLocation)
-                    < current.clLocation.distance(from: locR.clLocation)
+                distance(from: current, toKey: lhs) < distance(from: current, toKey: rhs)
             }
             guard let nearest else { break }
             ordered.append(nearest)
@@ -136,6 +165,13 @@ enum RoutePlanner {
         }
 
         return ordered
+    }
+
+    private static func distance(from location: ShootLocation, toKey: String) -> Double {
+        guard let other = ShootLocation.lookup(key: toKey), !other.isUnmapped, !location.isUnmapped else {
+            return Double.greatestFiniteMagnitude / 4
+        }
+        return location.clLocation.distance(from: other.clLocation)
     }
 
     private static func sortShotsAtLocation(_ bucket: [(shot: Shot, categoryName: String)]) -> [(shot: Shot, categoryName: String)] {

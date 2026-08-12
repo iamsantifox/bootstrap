@@ -36,6 +36,33 @@ final class ShotListParserTests: XCTestCase {
         XCTAssertEqual(project.shots.count, 4)
     }
 
+    func testParsesMarkdownCheckboxes() {
+        let text = """
+        B-ROLL
+        [ ] Open shot
+        [x] Done shot
+        [X] Also done
+        """
+
+        let project = ShotListParser.parse(text)
+        XCTAssertEqual(project.shots.count, 3)
+        XCTAssertFalse(project.shots[0].isCompleted)
+        XCTAssertTrue(project.shots[1].isCompleted)
+        XCTAssertTrue(project.shots[2].isCompleted)
+    }
+
+    func testOrphanShotsGoToUncategorized() {
+        let text = """
+        ☐ Orphan wide
+        DRONE
+        ☐ Aerial
+        """
+
+        let project = ShotListParser.parse(text)
+        XCTAssertTrue(project.categories.contains { $0.name == "UNCATEGORIZED" })
+        XCTAssertEqual(project.shots.count, 2)
+    }
+
     func testCategoryNamePreservedWithDash() {
         let text = """
         NORDIS – MAAN TASALTA
@@ -94,6 +121,21 @@ final class ShotListParserTests: XCTestCase {
         XCTAssertTrue(variants.allSatisfy { $0.locationKey == "reijolankatu" })
         XCTAssertEqual(variants.map(\.shotSize), [.medium, .closeUp])
     }
+
+    func testCategoryProgressCountsAllShots() {
+        let project = ShotListParser.parse(
+            """
+            REIJOLANKATU
+            ☐ Corner wide
+            ☐ Medium
+            ☐ Close / detail
+            """,
+            projectTitle: "Progress"
+        )
+        let category = project.categories[0]
+        XCTAssertEqual(project.categoryShotCount(category), 3)
+        XCTAssertEqual(project.categoryCompletedCount(category), 0)
+    }
 }
 
 final class LocationExtractorTests: XCTestCase {
@@ -127,5 +169,13 @@ final class LocationExtractorTests: XCTestCase {
             categoryName: "MANNERHEIMINTIE / NORDENSKIÖLDINKATU"
         )
         XCTAssertEqual(key, "mannerheimintie")
+    }
+
+    func testUnknownReturnsUnmapped() {
+        let key = LocationExtractor.resolveLocationKey(
+            title: "Mystery alley with no landmark",
+            categoryName: "RANDOM"
+        )
+        XCTAssertEqual(key, ShootLocation.unmappedKey)
     }
 }

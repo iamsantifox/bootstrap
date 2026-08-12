@@ -54,7 +54,7 @@ enum LocationExtractor {
             return "nordis"
         }
 
-        return nil
+        return ShootLocation.unmappedKey
     }
 
     static func location(for shot: Shot, categoryName: String) -> ShootLocation? {
@@ -64,7 +64,7 @@ enum LocationExtractor {
         if let key = resolveLocationKey(title: shot.title, categoryName: categoryName) {
             return ShootLocation.lookup(key: key)
         }
-        return ShootLocation.lookup(key: "toolo")
+        return ShootLocation.lookup(key: ShootLocation.unmappedKey)
     }
 
     private static func categoryKeywordMatches(_ keyword: String, categoryLower: String) -> Bool {

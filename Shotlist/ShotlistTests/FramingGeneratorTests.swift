@@ -53,6 +53,11 @@ final class FramingGeneratorTests: XCTestCase {
             accuracy: 0.001
         )
     }
+
+    func testPhoneLensCatalogIsPhoneOnly() {
+        let lenses = LensOption.availableLenses(for: .iphone15Pro)
+        XCTAssertEqual(lenses, [.phoneWide, .phoneTele])
+    }
 }
 
 final class RoutePlannerTests: XCTestCase {
@@ -101,5 +106,40 @@ final class RoutePlannerTests: XCTestCase {
         let plan = RoutePlanner.plan(for: project, startLocationKey: "toolontori")
         XCTAssertEqual(plan.stops.count, 1)
         XCTAssertGreaterThan(plan.stops[0].walkMinutesFromPrevious, 0)
+    }
+
+    func testCustomRouteOrderIsRespected() {
+        var project = ShotListParser.parse(SampleData.hifkTooloShotList, projectTitle: "Custom")
+        project.customRouteOrder = ["nordis", "toolontori", "reijolankatu"]
+        let plan = RoutePlanner.plan(for: project)
+        let keys = plan.stops.map(\.location.key).filter { ["nordis", "toolontori", "reijolankatu"].contains($0) }
+        XCTAssertEqual(Array(keys.prefix(3)), ["nordis", "toolontori", "reijolankatu"])
+    }
+
+    func testEmptyRouteWhenAllComplete() {
+        var project = ShotListParser.parse(
+            """
+            DRONE
+            ☐ One
+            """,
+            projectTitle: "Done"
+        )
+        project.shots = project.shots.map {
+            var shot = $0
+            shot.isCompleted = true
+            return shot
+        }
+        let plan = RoutePlanner.plan(for: project)
+        XCTAssertTrue(plan.stops.isEmpty)
+    }
+}
+
+final class PDFExporterTests: XCTestCase {
+    func testPDFGeneratesDataForSample() {
+        let project = ShotListParser.parse(SampleData.hifkTooloShotList, projectTitle: "PDF")
+        let plan = RoutePlanner.plan(for: project)
+        let data = PDFExporter.generatePDF(for: project, routePlan: plan)
+        XCTAssertNotNil(data)
+        XCTAssertGreaterThan(data?.count ?? 0, 1000)
     }
 }

@@ -7,7 +7,7 @@ struct GearSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Text("Set your default camera gear and shooting conditions. These apply to new shots unless overridden per shot.")
+                Text("Defaults apply to shots that don’t have their own framing override yet.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -16,12 +16,6 @@ struct GearSettingsView: View {
                 Picker("Camera", selection: $settings.camera) {
                     ForEach(CameraBody.allCases) { camera in
                         Text(camera.rawValue).tag(camera)
-                    }
-                }
-                .onChange(of: settings.camera) { _, newCamera in
-                    let available = LensOption.availableLenses(for: newCamera)
-                    if !available.contains(settings.lens) {
-                        settings.lens = available[0]
                     }
                 }
             }
@@ -65,14 +59,6 @@ struct GearSettingsView: View {
                 }
             }
 
-            Section {
-                Button("Save as Default") {
-                    store.updateFramingSettings(settings)
-                }
-                .fontWeight(.semibold)
-                .frame(maxWidth: .infinity)
-            }
-
             if !store.projects.isEmpty {
                 Section("Projects") {
                     ForEach(store.projects) { project in
@@ -93,6 +79,7 @@ struct GearSettingsView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             store.selectProject(id: project.id)
+                            store.selectedTab = .shots
                         }
                     }
                     .onDelete { indexSet in
@@ -106,6 +93,16 @@ struct GearSettingsView: View {
         .navigationTitle("Gear & Settings")
         .onAppear {
             settings = store.globalFramingSettings
+        }
+        .onChange(of: settings) { _, newValue in
+            let available = LensOption.availableLenses(for: newValue.camera)
+            var normalized = newValue
+            if !available.contains(normalized.lens) {
+                normalized.lens = available[0]
+                settings = normalized
+                return
+            }
+            store.updateFramingSettings(normalized)
         }
     }
 }
