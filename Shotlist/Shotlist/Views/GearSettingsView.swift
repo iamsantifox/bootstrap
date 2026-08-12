@@ -7,7 +7,7 @@ struct GearSettingsView: View {
     var body: some View {
         Form {
             Section {
-                Text("Set your default camera gear and shooting conditions. These apply to all new framing suggestions.")
+                Text("Set your default camera gear and shooting conditions. These apply to new shots unless overridden per shot.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -27,9 +27,26 @@ struct GearSettingsView: View {
             }
 
             Section("Lens") {
-                Picker("Default Lens", selection: $settings.lens) {
-                    ForEach(LensOption.availableLenses(for: settings.camera)) { lens in
-                        Text(lens.rawValue).tag(lens)
+                Toggle("Auto-select lens for shot type", isOn: $settings.useAutoLens)
+
+                if !settings.useAutoLens {
+                    Picker("Default Lens", selection: $settings.lens) {
+                        ForEach(LensOption.availableLenses(for: settings.camera)) { lens in
+                            Text(lens.rawValue).tag(lens)
+                        }
+                    }
+                }
+            }
+
+            Section("Format") {
+                Picker("Frame rate", selection: $settings.frameRate) {
+                    ForEach(FrameRate.allCases) { rate in
+                        Text(rate.displayName).tag(rate)
+                    }
+                }
+                Picker("Aspect ratio", selection: $settings.aspectRatio) {
+                    ForEach(AspectRatio.allCases) { ratio in
+                        Text(ratio.rawValue).tag(ratio)
                     }
                 }
             }
@@ -76,6 +93,7 @@ struct GearSettingsView: View {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             store.selectedProjectID = project.id
+                            store.refreshRoutePlan()
                         }
                     }
                     .onDelete { indexSet in

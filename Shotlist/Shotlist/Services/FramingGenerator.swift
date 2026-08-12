@@ -1,22 +1,37 @@
 import Foundation
 
 enum FramingGenerator {
-    static func suggest(for shot: Shot, settings: FramingSettings) -> FramingSuggestion {
-        let inferredStyle = inferFramingStyle(from: shot.title)
-        let lens = selectLens(for: inferredStyle, settings: settings)
-        let effectiveFL = effectiveFocalLength(lens: lens, camera: settings.camera)
-        let exposure = exposureSettings(timeOfDay: settings.timeOfDay, weather: settings.weather)
-        let composition = compositionNotes(for: shot.title, style: inferredStyle, settings: settings)
-        let horizon = horizonPlacement(for: shot.title, style: inferredStyle)
+    static func suggest(for shot: Shot, settings: FramingSettings, categoryName: String = "") -> FramingSuggestion {
+        var effectiveSettings = settings
+        if let suggestedCamera = ShotMetadataExtractor.suggestedCamera(categoryName: categoryName) {
+            effectiveSettings.camera = suggestedCamera
+            let available = LensOption.availableLenses(for: suggestedCamera)
+            if !available.contains(effectiveSettings.lens) {
+                effectiveSettings.lens = available[0]
+            }
+        }
+
+        let inferredStyle = inferFramingStyle(from: shot.title, shotSize: shot.shotSize)
+        let lens = effectiveSettings.useAutoLens
+            ? selectLens(for: inferredStyle, settings: effectiveSettings)
+            : effectiveSettings.lens
+        let effectiveFL = effectiveFocalLength(lens: lens, camera: effectiveSettings.camera)
+        let exposure = exposureSettings(
+            timeOfDay: effectiveSettings.timeOfDay,
+            weather: effectiveSettings.weather,
+            frameRate: effectiveSettings.frameRate
+        )
+        let composition = compositionNotes(for: shot.title, style: inferredStyle, settings: effectiveSettings)
+        let horizon = horizonPlacement(for: shot.title, style: inferredStyle, angle: shot.cameraAngle)
         let subject = subjectPlacement(for: shot.title, style: inferredStyle)
         let movement = movementSuggestion(for: shot.title, lens: lens)
-        let lighting = lightingNotes(timeOfDay: settings.timeOfDay, weather: settings.weather, shot: shot.title)
+        let lighting = lightingNotes(timeOfDay: effectiveSettings.timeOfDay, weather: effectiveSettings.weather, shot: shot.title)
 
         return FramingSuggestion(
             recommendedLens: lens,
             effectiveFocalLength: effectiveFL,
             aperture: exposure.aperture,
-            shutterSpeed: exposure.shutter,
+            shutterSpeed: effectiveSettings.frameRate.shutterSpeed,
             iso: exposure.iso,
             ndFilter: exposure.nd,
             compositionNotes: composition,
@@ -28,25 +43,25 @@ enum FramingGenerator {
         )
     }
 
-    private static func inferFramingStyle(from title: String) -> FramingStyle {
+    private static func inferFramingStyle(from title: String, shotSize: ShotSize) -> FramingStyle {
+        switch shotSize {
+        case .extremeWide, .wide: return .wide
+        case .medium: return .medium
+        case .closeUp, .extremeCloseUp: return .tight
+        case .detail: return .detail
+        case .unknown: break
+        }
+
         let lower = title.lowercased()
 
-        let detailKeywords = ["close-up", "close up", "close /", "tiukka", "lähikuva", "detail", "yksityiskohta", "teksti", "tarrat", "kengät", "jalat", "kyltit", "ovet", "valo"]
+        let detailKeywords = ["close-up", "close up", "close /", "tiukka", "lähikuva", "yksityiskohta", "teksti", "kengät", "jalat"]
         let wideKeywords = ["laaja", "wide", "establishing", "ympäristö", "lintuperspektiivi", "ylhäältä", "bird", "overview", "samassa kuvassa"]
         let tightKeywords = ["tiukemp", "tighter", "tele", "foreground", "sivusta", "edestä"]
 
-        if detailKeywords.contains(where: { lower.contains($0) }) {
-            return .detail
-        }
-        if wideKeywords.contains(where: { lower.contains($0) }) {
-            return .wide
-        }
-        if tightKeywords.contains(where: { lower.contains($0) }) {
-            return .tight
-        }
-        if lower.contains("medium") || lower.contains("keski") {
-            return .medium
-        }
+        if detailKeywords.contains(where: { lower.contains($0) }) { return .detail }
+        if wideKeywords.contains(where: { lower.contains($0) }) { return .wide }
+        if tightKeywords.contains(where: { lower.contains($0) }) { return .tight }
+        if lower.contains("medium") || lower.contains("keski") { return .medium }
 
         return .medium
     }
@@ -54,27 +69,22 @@ enum FramingGenerator {
     private static func selectLens(for style: FramingStyle, settings: FramingSettings) -> LensOption {
         let available = LensOption.availableLenses(for: settings.camera)
 
-        let preferred: LensOption = switch style {
+        return switch style {
         case .wide:
-            available.contains(settings.lens) && settings.lens.framingStyle == .wide
-                ? settings.lens
-                : (available.first { $0.framingStyle == .wide } ?? .wide24)
+            available.first { $0.framingStyle == .wide } ?? .wide24
         case .medium:
-            available.contains(settings.lens) && settings.lens.framingStyle == .medium
-                ? settings.lens
-                : (available.first { $0.framingStyle == .medium } ?? .standard35)
+            available.first { $0.framingStyle == .medium } ?? .standard35
         case .tight:
-            available.contains(settings.lens) && settings.lens.framingStyle == .tight
-                ? settings.lens
-                : (available.first { $0.framingStyle == .tight } ?? .portrait85)
+            available.first { $0.framingStyle == .tight } ?? .portrait85
         case .detail:
             available.contains(.macro100) ? .macro100 : (available.last ?? settings.lens)
         }
-
-        return preferred
     }
 
     private static func effectiveFocalLength(lens: LensOption, camera: CameraBody) -> String {
+        if camera == .djiMini4Pro || camera == .iphone15Pro {
+            return lens.rawValue
+        }
         let effective = Int(lens.focalLengthMM * camera.cropFactor)
         if camera.cropFactor == 1.0 {
             return "\(Int(lens.focalLengthMM))mm"
@@ -82,31 +92,37 @@ enum FramingGenerator {
         return "\(Int(lens.focalLengthMM))mm (\(effective)mm equiv.)"
     }
 
-    private static func exposureSettings(timeOfDay: TimeOfDay, weather: WeatherCondition) -> (aperture: String, shutter: String, iso: String, nd: String?) {
-        switch (timeOfDay, weather) {
+    private static func exposureSettings(
+        timeOfDay: TimeOfDay,
+        weather: WeatherCondition,
+        frameRate: FrameRate
+    ) -> (aperture: String, iso: String, nd: String?) {
+        let base: (String, String, String?) = switch (timeOfDay, weather) {
         case (.goldenHour, .sunny):
-            return ("f/4 – f/5.6", "1/50s (180°)", "100–200", "ND 0.6 optional")
+            ("f/4 – f/5.6", "100–200", "ND 0.6 optional")
         case (.goldenHour, _):
-            return ("f/2.8 – f/4", "1/50s", "200–400", nil)
+            ("f/2.8 – f/4", "200–400", nil)
         case (.blueHour, _):
-            return ("f/2 – f/2.8", "1/50s", "800–1600", nil)
+            ("f/2 – f/2.8", "800–1600", nil)
         case (.midday, .sunny):
-            return ("f/5.6 – f/8", "1/50s", "100", "ND 1.2 – ND 1.8")
+            ("f/5.6 – f/8", "100", "ND 1.2 – ND 1.8")
         case (.midday, _):
-            return ("f/4 – f/5.6", "1/50s", "200–400", "ND 0.6")
+            ("f/4 – f/5.6", "200–400", "ND 0.6")
         case (.overcastDay, _), (_, .overcast):
-            return ("f/2.8 – f/4", "1/50s", "400–800", nil)
+            ("f/2.8 – f/4", "400–800", nil)
         case (.night, _):
-            return ("f/1.4 – f/2", "1/50s", "1600–6400", nil)
+            ("f/1.4 – f/2", "1600–6400", nil)
         case (.dawn, .fog), (_, .fog):
-            return ("f/2.8 – f/4", "1/50s", "400–800", nil)
+            ("f/2.8 – f/4", "400–800", nil)
         case (_, .rain):
-            return ("f/2.8 – f/4", "1/50s", "400–800", nil)
+            ("f/2.8 – f/4", "400–800", nil)
         case (_, .snow):
-            return ("f/5.6 – f/8", "1/50s", "100–200", "ND 0.3 – ND 0.6")
+            ("f/5.6 – f/8", "100–200", "ND 0.3 – ND 0.6")
         default:
-            return ("f/4", "1/50s", "400", nil)
+            ("f/4", "400", nil)
         }
+        _ = frameRate
+        return base
     }
 
     private static func compositionNotes(for title: String, style: FramingStyle, settings: FramingSettings) -> [String] {
@@ -114,6 +130,7 @@ enum FramingGenerator {
         let lower = title.lowercased()
 
         notes.append("Framing style: \(style.displayName)")
+        notes.append("Aspect ratio: \(settings.aspectRatio.rawValue)")
 
         if lower.contains("drone") || lower.contains("ylhäältä") || lower.contains("lintu") {
             notes.append("Top-down: keep subject near intersection of thirds")
@@ -129,7 +146,9 @@ enum FramingGenerator {
             notes.append("Place foreground element in lower third, subject in background")
         }
 
-        if lower.contains("valo") || lower.contains("light") {
+        if lower.contains("valo vaihtuu") || lower.contains("liikennevalo") {
+            notes.append("Expose for the light transition moment; allow 2–3 cycles")
+        } else if lower.contains("valo") || lower.contains("light") {
             notes.append("Expose for the light source transition moment")
         }
 
@@ -143,14 +162,16 @@ enum FramingGenerator {
             notes.append("Fill frame with subject; minimal dead space")
         }
 
-        if notes.count == 1 {
+        if notes.count <= 2 {
             notes.append("Use rule of thirds; balance foreground and background")
         }
 
         return notes
     }
 
-    private static func horizonPlacement(for title: String, style: FramingStyle) -> HorizonPlacement {
+    private static func horizonPlacement(for title: String, style: FramingStyle, angle: CameraAngle) -> HorizonPlacement {
+        if angle == .birdsEye { return .none }
+
         let lower = title.lowercased()
         if lower.contains("ylhäältä") || lower.contains("drone") || lower.contains("lintu") {
             return .none
@@ -158,7 +179,7 @@ enum FramingGenerator {
         if lower.contains("taivasta") || lower.contains("johdot") || lower.contains("julkisivuja ylöspäin") {
             return .low
         }
-        if lower.contains("matalasta") {
+        if lower.contains("matalasta") || angle == .low {
             return .low
         }
         if style == .detail {

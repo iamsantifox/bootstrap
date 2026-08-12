@@ -121,6 +121,48 @@ enum FramingStyle: String, Codable {
     }
 }
 
+enum FrameRate: Int, CaseIterable, Identifiable, Codable {
+    case fps24 = 24
+    case fps25 = 25
+    case fps30 = 30
+    case fps50 = 50
+    case fps60 = 60
+
+    var id: Int { rawValue }
+
+    var displayName: String { "\(rawValue) fps" }
+
+    var shutterSpeed: String {
+        let denominator = rawValue * 2
+        return "1/\(denominator)s (180°)"
+    }
+}
+
+enum AspectRatio: String, CaseIterable, Identifiable, Codable {
+    case sixteenByNine = "16:9"
+    case seventeenByNine = "17:9"
+    case fourByThree = "4:3"
+    case twoPointThreeNine = "2.39:1"
+
+    var id: String { rawValue }
+
+    var widthRatio: Double {
+        switch self {
+        case .sixteenByNine: return 16
+        case .seventeenByNine: return 17
+        case .fourByThree: return 4
+        case .twoPointThreeNine: return 2.39
+        }
+    }
+
+    var heightRatio: Double {
+        switch self {
+        case .sixteenByNine, .seventeenByNine, .twoPointThreeNine: return 9
+        case .fourByThree: return 3
+        }
+    }
+}
+
 enum TimeOfDay: String, CaseIterable, Identifiable, Codable {
     case goldenHour = "Golden Hour"
     case blueHour = "Blue Hour"
@@ -170,13 +212,52 @@ struct FramingSettings: Codable, Equatable {
     var lens: LensOption
     var timeOfDay: TimeOfDay
     var weather: WeatherCondition
+    var frameRate: FrameRate
+    var aspectRatio: AspectRatio
+    var useAutoLens: Bool
 
     static let `default` = FramingSettings(
         camera: .sonyFX3,
         lens: .wide24,
         timeOfDay: .goldenHour,
-        weather: .partlyCloudy
+        weather: .partlyCloudy,
+        frameRate: .fps25,
+        aspectRatio: .sixteenByNine,
+        useAutoLens: true
     )
+
+    enum CodingKeys: String, CodingKey {
+        case camera, lens, timeOfDay, weather, frameRate, aspectRatio, useAutoLens
+    }
+
+    init(
+        camera: CameraBody,
+        lens: LensOption,
+        timeOfDay: TimeOfDay,
+        weather: WeatherCondition,
+        frameRate: FrameRate = .fps25,
+        aspectRatio: AspectRatio = .sixteenByNine,
+        useAutoLens: Bool = true
+    ) {
+        self.camera = camera
+        self.lens = lens
+        self.timeOfDay = timeOfDay
+        self.weather = weather
+        self.frameRate = frameRate
+        self.aspectRatio = aspectRatio
+        self.useAutoLens = useAutoLens
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        camera = try container.decode(CameraBody.self, forKey: .camera)
+        lens = try container.decode(LensOption.self, forKey: .lens)
+        timeOfDay = try container.decode(TimeOfDay.self, forKey: .timeOfDay)
+        weather = try container.decode(WeatherCondition.self, forKey: .weather)
+        frameRate = try container.decodeIfPresent(FrameRate.self, forKey: .frameRate) ?? .fps25
+        aspectRatio = try container.decodeIfPresent(AspectRatio.self, forKey: .aspectRatio) ?? .sixteenByNine
+        useAutoLens = try container.decodeIfPresent(Bool.self, forKey: .useAutoLens) ?? true
+    }
 }
 
 struct FramingSuggestion: Equatable {

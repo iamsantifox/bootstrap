@@ -7,6 +7,7 @@ struct ShotListView: View {
 
     @State private var expandedCategories: Set<UUID> = []
     @State private var searchText = ""
+    @State private var showIncompleteOnly = false
 
     private var liveProject: ShotListProject {
         if isPreview { return project }
@@ -15,6 +16,14 @@ struct ShotListView: View {
 
     var body: some View {
         List {
+            if !liveProject.brief.isEmpty {
+                Section("Brief") {
+                    Text(liveProject.brief)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section {
                 ProgressHeaderView(
                     completed: liveProject.completedCount,
@@ -23,33 +32,41 @@ struct ShotListView: View {
             }
 
             ForEach(sortedCategories) { category in
-                Section {
-                    if expandedCategories.contains(category.id) || !searchText.isEmpty {
-                        ForEach(filteredShots(for: category)) { shot in
-                            NavigationLink {
-                                ShotDetailView(shot: shot, categoryName: category.name)
-                            } label: {
-                                ShotRowView(shot: shot, isPreview: isPreview)
+                let shots = filteredShots(for: category)
+                if !shots.isEmpty || searchText.isEmpty {
+                    Section {
+                        if expandedCategories.contains(category.id) || !searchText.isEmpty {
+                            ForEach(shots) { shot in
+                                ShotRowView(
+                                    shot: shot,
+                                    categoryName: category.name,
+                                    variants: liveProject.variants(of: shot),
+                                    isPreview: isPreview
+                                )
                             }
                         }
-                    }
-                } header: {
-                    CategoryHeaderView(
-                        category: category,
-                        shotCount: liveProject.shots(in: category).count,
-                        completedCount: liveProject.shots(in: category).filter(\.isCompleted).count,
-                        isExpanded: expandedCategories.contains(category.id),
-                        onToggle: { toggleCategory(category.id) }
-                    )
-                } footer: {
-                    if !category.description.isEmpty {
-                        Text(category.description)
+                    } header: {
+                        CategoryHeaderView(
+                            category: category,
+                            shotCount: liveProject.shots(in: category).filter { !$0.isVariant }.count,
+                            completedCount: liveProject.shots(in: category).filter(\.isCompleted).count,
+                            isExpanded: expandedCategories.contains(category.id),
+                            onToggle: { toggleCategory(category.id) }
+                        )
                     }
                 }
             }
         }
         .navigationTitle(liveProject.title)
         .searchable(text: $searchText, prompt: "Search shots")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Toggle(isOn: $showIncompleteOnly) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                }
+                .toggleStyle(.button)
+            }
+        }
         .onAppear {
             expandedCategories = Set(liveProject.categories.map(\.id))
         }
@@ -60,9 +77,15 @@ struct ShotListView: View {
     }
 
     private func filteredShots(for category: ShotCategory) -> [Shot] {
-        let shots = liveProject.shots(in: category)
+        var shots = liveProject.shots(in: category).filter { !$0.isVariant }
+        if showIncompleteOnly {
+            shots = shots.filter { !$0.isCompleted }
+        }
         guard !searchText.isEmpty else { return shots }
-        return shots.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        return shots.filter { shot in
+            if shot.title.localizedCaseInsensitiveContains(searchText) { return true }
+            return liveProject.variants(of: shot).contains { $0.title.localizedCaseInsensitiveContains(searchText) }
+        }
     }
 
     private func toggleCategory(_ id: UUID) {
@@ -129,30 +152,76 @@ struct CategoryHeaderView: View {
 struct ShotRowView: View {
     @EnvironmentObject private var store: ShotListStore
     let shot: Shot
+    let categoryName: String
+    let variants: [Shot]
     let isPreview: Bool
+
+    private var liveShot: Shot {
+        store.selectedProject?.shots.first { $0.id == shot.id } ?? shot
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Button {
                 guard !isPreview else { return }
-                store.toggleShot(shot)
+                store.toggleShot(liveShot)
             } label: {
-                Image(systemName: shot.isCompleted ? "checkmark.circle.fill" : "circle")
+                Image(systemName: liveShot.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.title3)
-                    .foregroundStyle(shot.isCompleted ? .green : .secondary)
+                    .foregroundStyle(liveShot.isCompleted ? .green : .secondary)
             }
             .buttonStyle(.plain)
             .disabled(isPreview)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(shot.title)
-                    .font(.body)
-                    .strikethrough(shot.isCompleted)
-                    .foregroundStyle(shot.isCompleted ? .secondary : .primary)
-                if !shot.notes.isEmpty {
-                    Text(shot.notes)
+            NavigationLink {
+                ShotDetailView(shot: liveShot, categoryName: categoryName)
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(liveShot.title)
+                            .font(.body)
+                            .strikethrough(liveShot.isCompleted)
+                            .foregroundStyle(liveShot.isCompleted ? .secondary : .primary)
+                        if liveShot.shotSize != .unknown {
+                            Text(liveShot.shotSize.rawValue)
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(.orange.opacity(0.15), in: Capsule())
+                        }
+                    }
+
+                    if liveShot.cameraAngle != .unknown {
+                        Text(liveShot.cameraAngle.rawValue)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let location = liveShot.locationKey.flatMap({ ShootLocation.lookup(key: $0) }) {
+                        Label(location.name, systemImage: "mappin")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach(variants) { variant in
+                        let liveVariant = store.selectedProject?.shots.first { $0.id == variant.id } ?? variant
+                        HStack(spacing: 4) {
+                            Text("↳")
+                            Text(liveVariant.title)
+                            if liveVariant.shotSize != .unknown {
+                                Text(liveVariant.shotSize.rawValue)
+                                    .font(.caption2.bold())
+                            }
+                        }
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    }
+
+                    if !liveShot.notes.isEmpty {
+                        Text(liveShot.notes)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }

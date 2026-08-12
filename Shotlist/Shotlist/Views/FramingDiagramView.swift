@@ -2,40 +2,35 @@ import SwiftUI
 
 struct FramingDiagramView: View {
     let suggestion: FramingSuggestion
+    var aspectRatio: AspectRatio = .sixteenByNine
 
     var body: some View {
         GeometryReader { geometry in
-            let width = geometry.size.width
-            let height = geometry.size.height
+            let containerWidth = geometry.size.width
+            let containerHeight = geometry.size.height
+            let frameSize = fittedFrameSize(in: geometry.size)
 
             ZStack {
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        LinearGradient(
-                            colors: backgroundColors,
-                            startPoint: .top,
-                            endPoint: .bottom
+                Color.black.opacity(0.15)
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(
+                            LinearGradient(
+                                colors: backgroundColors,
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
                         )
-                    )
 
-                // Rule of thirds grid
-                Path { path in
-                    let thirdW = width / 3
-                    let thirdH = height / 3
-                    path.move(to: CGPoint(x: thirdW, y: 0))
-                    path.addLine(to: CGPoint(x: thirdW, y: height))
-                    path.move(to: CGPoint(x: thirdW * 2, y: 0))
-                    path.addLine(to: CGPoint(x: thirdW * 2, y: height))
-                    path.move(to: CGPoint(x: 0, y: thirdH))
-                    path.addLine(to: CGPoint(x: width, y: thirdH))
-                    path.move(to: CGPoint(x: 0, y: thirdH * 2))
-                    path.addLine(to: CGPoint(x: width, y: thirdH * 2))
+                    gridAndOverlays(width: frameSize.width, height: frameSize.height)
                 }
-                .stroke(.white.opacity(0.25), lineWidth: 1)
-
-                horizonLine(in: CGSize(width: width, height: height))
-                subjectMarker(in: CGSize(width: width, height: height))
-                framingOverlay(in: CGSize(width: width, height: height))
+                .frame(width: frameSize.width, height: frameSize.height)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(.white.opacity(0.4), lineWidth: 1)
+                )
 
                 VStack {
                     HStack {
@@ -45,6 +40,11 @@ struct FramingDiagramView: View {
                             .padding(.vertical, 6)
                             .background(.ultraThinMaterial, in: Capsule())
                         Spacer()
+                        Text(aspectRatio.rawValue)
+                            .font(.caption2.bold())
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.ultraThinMaterial, in: Capsule())
                     }
                     Spacer()
                     HStack {
@@ -62,11 +62,47 @@ struct FramingDiagramView: View {
                     }
                 }
                 .padding(12)
+                .frame(width: containerWidth, height: containerHeight)
                 .foregroundStyle(.white)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .padding(.horizontal)
+    }
+
+    private func fittedFrameSize(in container: CGSize) -> CGSize {
+        let targetRatio = aspectRatio.widthRatio / aspectRatio.heightRatio
+        let containerRatio = container.width / container.height
+        if containerRatio > targetRatio {
+            let height = container.height * 0.85
+            return CGSize(width: height * targetRatio, height: height)
+        }
+        let width = container.width * 0.92
+        return CGSize(width: width, height: width / targetRatio)
+    }
+
+    @ViewBuilder
+    private func gridAndOverlays(width: CGFloat, height: CGFloat) -> some View {
+        let size = CGSize(width: width, height: height)
+        ZStack {
+            Path { path in
+                let thirdW = width / 3
+                let thirdH = height / 3
+                path.move(to: CGPoint(x: thirdW, y: 0))
+                path.addLine(to: CGPoint(x: thirdW, y: height))
+                path.move(to: CGPoint(x: thirdW * 2, y: 0))
+                path.addLine(to: CGPoint(x: thirdW * 2, y: height))
+                path.move(to: CGPoint(x: 0, y: thirdH))
+                path.addLine(to: CGPoint(x: width, y: thirdH))
+                path.move(to: CGPoint(x: 0, y: thirdH * 2))
+                path.addLine(to: CGPoint(x: width, y: thirdH * 2))
+            }
+            .stroke(.white.opacity(0.25), lineWidth: 1)
+
+            horizonLine(in: size)
+            subjectMarker(in: size)
+            framingOverlay(in: size)
+        }
     }
 
     private var backgroundColors: [Color] {
@@ -93,7 +129,7 @@ struct FramingDiagramView: View {
             }
             Rectangle()
                 .fill(.white.opacity(0.35))
-                .frame(height: 2)
+                .frame(width: size.width, height: 2)
                 .position(x: size.width / 2, y: y)
         }
     }
@@ -168,7 +204,8 @@ struct FramingDiagramView: View {
         suggestion: FramingGenerator.suggest(
             for: Shot(title: "Töölöntori drone ylhäältä", categoryID: UUID()),
             settings: .default
-        )
+        ),
+        aspectRatio: .sixteenByNine
     )
     .frame(height: 220)
     .padding()

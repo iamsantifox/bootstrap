@@ -17,6 +17,13 @@ struct ContentView: View {
             }
 
             NavigationStack {
+                RoutePlanView()
+            }
+            .tabItem {
+                Label("Route", systemImage: "map")
+            }
+
+            NavigationStack {
                 ImportShotListView()
             }
             .tabItem {

@@ -19,6 +19,16 @@ struct ShotDetailView: View {
                 LabeledContent("Category", value: categoryName)
                 Text(liveShot.title)
                     .font(.body)
+                if liveShot.shotSize != .unknown {
+                    LabeledContent("Shot size", value: liveShot.shotSize.displayName)
+                }
+                if liveShot.cameraAngle != .unknown {
+                    LabeledContent("Angle", value: liveShot.cameraAngle.rawValue)
+                }
+                if let key = liveShot.locationKey, let location = ShootLocation.lookup(key: key) {
+                    LabeledContent("Location", value: location.name)
+                }
+                LabeledContent("Est. time", value: "\(liveShot.estimatedMinutes(categoryName: categoryName)) min")
             }
 
             Section("Framing Setup") {
@@ -32,29 +42,48 @@ struct ShotDetailView: View {
                     if !available.contains(localSettings.lens) {
                         localSettings.lens = available[0]
                     }
-                    regenerate()
+                    saveAndRegenerate()
                 }
 
-                Picker("Lens", selection: $localSettings.lens) {
-                    ForEach(LensOption.availableLenses(for: localSettings.camera)) { lens in
-                        Text(lens.rawValue).tag(lens)
+                Toggle("Auto-select lens for shot", isOn: $localSettings.useAutoLens)
+                    .onChange(of: localSettings.useAutoLens) { _, _ in saveAndRegenerate() }
+
+                if !localSettings.useAutoLens {
+                    Picker("Lens", selection: $localSettings.lens) {
+                        ForEach(LensOption.availableLenses(for: localSettings.camera)) { lens in
+                            Text(lens.rawValue).tag(lens)
+                        }
+                    }
+                    .onChange(of: localSettings.lens) { _, _ in saveAndRegenerate() }
+                }
+
+                Picker("Frame rate", selection: $localSettings.frameRate) {
+                    ForEach(FrameRate.allCases) { rate in
+                        Text(rate.displayName).tag(rate)
                     }
                 }
-                .onChange(of: localSettings.lens) { _, _ in regenerate() }
+                .onChange(of: localSettings.frameRate) { _, _ in saveAndRegenerate() }
+
+                Picker("Aspect ratio", selection: $localSettings.aspectRatio) {
+                    ForEach(AspectRatio.allCases) { ratio in
+                        Text(ratio.rawValue).tag(ratio)
+                    }
+                }
+                .onChange(of: localSettings.aspectRatio) { _, _ in saveAndRegenerate() }
 
                 Picker("Time of Day", selection: $localSettings.timeOfDay) {
                     ForEach(TimeOfDay.allCases) { time in
                         Text(time.rawValue).tag(time)
                     }
                 }
-                .onChange(of: localSettings.timeOfDay) { _, _ in regenerate() }
+                .onChange(of: localSettings.timeOfDay) { _, _ in saveAndRegenerate() }
 
                 Picker("Weather", selection: $localSettings.weather) {
                     ForEach(WeatherCondition.allCases) { weather in
                         Text(weather.rawValue).tag(weather)
                     }
                 }
-                .onChange(of: localSettings.weather) { _, _ in regenerate() }
+                .onChange(of: localSettings.weather) { _, _ in saveAndRegenerate() }
 
                 Button("Generate Framing") {
                     regenerate()
@@ -64,7 +93,7 @@ struct ShotDetailView: View {
 
             if let suggestion {
                 Section("Framing Preview") {
-                    FramingDiagramView(suggestion: suggestion)
+                    FramingDiagramView(suggestion: suggestion, aspectRatio: localSettings.aspectRatio)
                         .frame(height: 220)
                         .listRowInsets(EdgeInsets())
                 }
@@ -107,14 +136,26 @@ struct ShotDetailView: View {
         .navigationTitle("Shot Detail")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            localSettings = store.globalFramingSettings
+            localSettings = liveShot.framingSettings ?? store.globalFramingSettings
+            if let suggested = ShotMetadataExtractor.suggestedCamera(categoryName: categoryName) {
+                localSettings.camera = suggested
+            }
             notes = liveShot.notes
             regenerate()
         }
     }
 
+    private func saveAndRegenerate() {
+        store.updateShotFraming(liveShot, settings: localSettings)
+        regenerate()
+    }
+
     private func regenerate() {
-        suggestion = FramingGenerator.suggest(for: liveShot, settings: localSettings)
+        suggestion = FramingGenerator.suggest(
+            for: liveShot,
+            settings: localSettings,
+            categoryName: categoryName
+        )
     }
 }
 

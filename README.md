@@ -1,81 +1,73 @@
 # Shotlist
 
-A native iOS app for film and video production shot lists. Paste a raw shot list and turn it into an organized, checkable list with framing suggestions based on your camera gear and shooting conditions.
+A native iOS app for film and video production shot lists. Paste a raw shot list, get an organized checklist, framing suggestions, and an optimized walking route for location shoots.
 
 ## Features
 
-- **Paste & parse** — Import shot lists from notes, email, or production docs. Supports checkbox (`☐`), bullet (`-`), and numbered formats. ALL CAPS lines become categories.
-- **Organized shot list** — Collapsible categories, progress tracking, search, and per-shot completion checkboxes.
-- **Framing generator** — For each shot, generate example framing guidance based on:
-  - Camera body (Sony FX3, Canon R5 C, RED Komodo, DJI Mini 4 Pro, iPhone 15 Pro, etc.)
-  - Lens (14mm–200mm, drone/phone equivalents)
-  - Time of day (golden hour, blue hour, midday, night, etc.)
-  - Weather (sunny, overcast, rain, snow, fog)
-- **Visual framing diagram** — Rule-of-thirds grid with subject placement, horizon line, and framing style overlay.
-- **Exposure suggestions** — Aperture, shutter speed, ISO, and ND filter recommendations.
-- **Persistence** — Projects and gear settings saved locally.
+### Shot list
+- **Paste & parse** — Checkbox (`☐`), bullet (`-`), and numbered formats. Categories preserved exactly (e.g. `NORDIS – MAAN TASALTA`).
+- **Project brief** — Intro paragraphs saved and shown at the top of the list.
+- **Shot metadata** — Auto-detected shot size (WS/MS/CU), camera angle, and location.
+- **Variant grouping** — `Medium` / `Close / detail` lines group under the previous shot.
+- **Progress tracking** — Checkboxes, search, filter incomplete shots.
+
+### Walk route (new)
+- **Location clustering** — Shots grouped by Töölö landmarks (Töölöntori, Nordis, Mannerheimintie, etc.).
+- **Optimized walk order** — Nearest-neighbor routing to minimize backtracking.
+- **Time management** — Per-shot time estimates, walk time between stops, start time picker, ETA finish.
+- **Map view** — MapKit map with numbered stops and walking path.
+- **Apple Maps navigation** — One-tap "Navigate" opens walking directions to each stop.
+- **Shoot order** — Wide shots before mediums/closes at each location.
+
+### Framing generator
+- Camera body, lens (manual or auto), **frame rate** (24/25/30/50/60 fps with 180° shutter), **aspect ratio**
+- Time of day and weather exposure suggestions
+- Visual framing diagram with correct aspect ratio letterboxing
+- Auto-selects DJI Mini 4 Pro for DRONE category shots
+- Per-shot framing settings saved
+
+### Export
+- PDF call sheet with route summary and full shot list
 
 ## Requirements
 
 - iOS 17.0+
 - Xcode 15.0+
-- iPhone or iPad
 
 ## Getting Started
 
 1. Open `Shotlist/Shotlist.xcodeproj` in Xcode.
-2. Select your development team in Signing & Capabilities.
-3. Build and run on a simulator or device (⌘R).
+2. Set your development team in Signing & Capabilities.
+3. Build and run (⌘R).
 
 ## Usage
 
-### Import a shot list
+1. **Import** → Load Sample (HIFK Töölö) or paste your list → Create Shot List
+2. **Route** → Review map, set start time and start location, follow numbered stops
+3. **Shots** → Check off completed shots; tap for framing details
+4. **Gear** → Set default camera, 25fps, 16:9, etc.
 
-1. Go to the **Import** tab.
-2. Paste your shot list (or tap **Load Sample** for the included HIFK Töölö b-roll example).
-3. Optionally set a project title.
-4. Tap **Preview Parse** to verify, then **Create Shot List**.
+## Route planning
 
-### Format example
+The route planner uses known coordinates for Töölö/Helsinki locations:
 
-```
-DRONE
-☐ Töölöntori – suoraan ylhäältä / lintuperspektiivi
-☐ Liikenne risteyksessä ylhäältä
+| Location | Area |
+|----------|------|
+| Töölöntori | Runeberginkatu / Topeliuksenkatu |
+| Nordis | Helsingin jäähalli |
+| Mannerheimintie | Yliopiston Apteekki corner |
+| Nordenskiöldinkatu | Urheilukatu area |
+| Reijolankatu | Reijolankatu corner |
+| Olympiastadion | Stadium tower shots |
+| Kisahalli | Kisahalli exterior |
 
-NORDIS – MAAN TASALTA
-☐ Halli edestä
-☐ Halli sivusta
-```
-
-### Generate framing
-
-1. Tap any shot in the list.
-2. Choose camera, lens, time of day, and weather.
-3. Tap **Generate Framing** to see the visual diagram and suggested settings.
-
-### Default gear
-
-Set your default camera and conditions in the **Gear** tab. These apply to all new framing suggestions.
-
-## Project Structure
-
-```
-Shotlist/
-├── Shotlist/
-│   ├── Models/          # Shot, category, camera gear enums
-│   ├── Services/        # Parser, framing generator, data store
-│   ├── Views/           # SwiftUI screens
-│   └── SampleData.swift # HIFK Töölö example shot list
-└── ShotlistTests/       # Unit tests for parser and framing logic
-```
+Time estimates: wide 5m, medium 4m, CU 3m, detail 2m, drone 12m, traffic lights 10m. Walk pace ~5 km/h.
 
 ## Tests
 
-Run unit tests in Xcode with ⌘U, or:
-
 ```bash
-xcodebuild test -project Shotlist/Shotlist.xcodeproj -scheme Shotlist -destination 'platform=iOS Simulator,name=iPhone 15'
+xcodebuild test -project Shotlist/Shotlist.xcodeproj -scheme Shotlist \
+  -destination 'platform=iOS Simulator,name=iPhone 15'
 ```
 
 ## License
