@@ -24,11 +24,7 @@ final class ShotListStore: ObservableObject {
         }
         set {
             guard let project = newValue else { return }
-            if let index = projects.firstIndex(where: { $0.id == project.id }) {
-                projects[index] = project
-                save()
-                refreshRoutePlan()
-            }
+            upsert(project, refreshRoute: false)
         }
     }
 
@@ -46,31 +42,30 @@ final class ShotListStore: ObservableObject {
         projects.removeAll { $0.id == project.id }
         if selectedProjectID == project.id {
             selectedProjectID = projects.first?.id
-            refreshRoutePlan()
         }
         save()
+        refreshRoutePlan()
     }
 
     func toggleShot(_ shot: Shot) {
         guard var project = selectedProject,
               let index = project.shots.firstIndex(where: { $0.id == shot.id }) else { return }
         project.shots[index].isCompleted.toggle()
-        selectedProject = project
-        refreshRoutePlan()
+        upsert(project, refreshRoute: true)
     }
 
     func updateShotNotes(_ shot: Shot, notes: String) {
         guard var project = selectedProject,
               let index = project.shots.firstIndex(where: { $0.id == shot.id }) else { return }
         project.shots[index].notes = notes
-        selectedProject = project
+        upsert(project, refreshRoute: false)
     }
 
     func updateShotFraming(_ shot: Shot, settings: FramingSettings) {
         guard var project = selectedProject,
               let index = project.shots.firstIndex(where: { $0.id == shot.id }) else { return }
         project.shots[index].framingSettings = settings
-        selectedProject = project
+        upsert(project, refreshRoute: false)
     }
 
     func updateFramingSettings(_ settings: FramingSettings) {
@@ -89,7 +84,11 @@ final class ShotListStore: ObservableObject {
     func updateRouteStartLocation(_ key: String) {
         guard var project = selectedProject else { return }
         project.routeStartLocationKey = key
-        selectedProject = project
+        upsert(project, refreshRoute: true)
+    }
+
+    func selectProject(id: UUID) {
+        selectedProjectID = id
         refreshRoutePlan()
     }
 
@@ -104,7 +103,8 @@ final class ShotListStore: ObservableObject {
             startLocationKey: project.routeStartLocationKey
         )
         cachedRoutePlan = plan
-        var updated = RoutePlanner.applyRouteOrder(to: project, plan: plan)
+
+        let updated = RoutePlanner.applyRouteOrder(to: project, plan: plan)
         if let index = projects.firstIndex(where: { $0.id == updated.id }) {
             projects[index] = updated
             save()
@@ -114,6 +114,18 @@ final class ShotListStore: ObservableObject {
     func exportPDF() -> Data? {
         guard let project = selectedProject else { return nil }
         return PDFExporter.generatePDF(for: project, routePlan: cachedRoutePlan)
+    }
+
+    private func upsert(_ project: ShotListProject, refreshRoute: Bool) {
+        if let index = projects.firstIndex(where: { $0.id == project.id }) {
+            projects[index] = project
+        } else {
+            projects.insert(project, at: 0)
+        }
+        save()
+        if refreshRoute {
+            refreshRoutePlan()
+        }
     }
 
     private func save() {

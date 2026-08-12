@@ -136,9 +136,17 @@ struct ShotDetailView: View {
         .navigationTitle("Shot Detail")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            localSettings = liveShot.framingSettings ?? store.globalFramingSettings
-            if let suggested = ShotMetadataExtractor.suggestedCamera(categoryName: categoryName) {
-                localSettings.camera = suggested
+            if let saved = liveShot.framingSettings {
+                localSettings = saved
+            } else {
+                localSettings = store.globalFramingSettings
+                if let suggested = ShotMetadataExtractor.suggestedCamera(categoryName: categoryName) {
+                    localSettings.camera = suggested
+                    let available = LensOption.availableLenses(for: suggested)
+                    if !available.contains(localSettings.lens) {
+                        localSettings.lens = available[0]
+                    }
+                }
             }
             notes = liveShot.notes
             regenerate()

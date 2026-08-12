@@ -157,8 +157,9 @@ enum AspectRatio: String, CaseIterable, Identifiable, Codable {
 
     var heightRatio: Double {
         switch self {
-        case .sixteenByNine, .seventeenByNine, .twoPointThreeNine: return 9
+        case .sixteenByNine, .seventeenByNine: return 9
         case .fourByThree: return 3
+        case .twoPointThreeNine: return 1
         }
     }
 }

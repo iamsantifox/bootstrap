@@ -92,8 +92,7 @@ struct GearSettingsView: View {
                         }
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            store.selectedProjectID = project.id
-                            store.refreshRoutePlan()
+                            store.selectProject(id: project.id)
                         }
                     }
                     .onDelete { indexSet in

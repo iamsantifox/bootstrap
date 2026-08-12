@@ -20,26 +20,29 @@ enum RoutePlanner {
             locationBuckets[key, default: []].append((shot, categoryName))
         }
 
-        var orderedKeys = optimizeLocationOrder(
+        let orderedKeys = optimizeLocationOrder(
             keys: Array(locationBuckets.keys),
             startKey: startKey
         )
 
-        if !orderedKeys.contains(startKey), let start = ShootLocation.lookup(key: startKey) {
-            orderedKeys.insert(startKey, at: 0)
-        }
-
         var stops: [RouteStop] = []
         var cumulative = 0
         var previousLocation = ShootLocation.lookup(key: startKey) ?? ShootLocation.catalog[0]
+        var isFirstStop = true
 
-        for (index, key) in orderedKeys.enumerated() {
+        for key in orderedKeys {
             guard let location = ShootLocation.lookup(key: key),
                   let bucket = locationBuckets[key] else { continue }
 
             let walkMinutes: Int
-            if index == 0 {
-                walkMinutes = 0
+            if isFirstStop {
+                // Include walk from chosen start point when the first shoot stop differs.
+                if location.key == previousLocation.key {
+                    walkMinutes = 0
+                } else {
+                    let meters = previousLocation.clLocation.distance(from: location.clLocation)
+                    walkMinutes = max(1, Int(ceil(meters / walkingMetersPerMinute)))
+                }
             } else {
                 let meters = previousLocation.clLocation.distance(from: location.clLocation)
                 walkMinutes = max(1, Int(ceil(meters / walkingMetersPerMinute)))
@@ -53,10 +56,9 @@ enum RoutePlanner {
             cumulative += walkMinutes + shootMinutes
 
             stops.append(RouteStop(
-                id: UUID(),
                 location: location,
                 shots: sortedShots.map(\.shot),
-                order: index + 1,
+                order: stops.count + 1,
                 walkMinutesFromPrevious: walkMinutes,
                 shootMinutes: shootMinutes,
                 cumulativeMinutes: cumulative,
@@ -64,6 +66,7 @@ enum RoutePlanner {
             ))
 
             previousLocation = location
+            isFirstStop = false
         }
 
         let totalWalk = stops.reduce(0) { $0 + $1.walkMinutesFromPrevious }
@@ -100,21 +103,36 @@ enum RoutePlanner {
         var remaining = Set(keys)
         var ordered: [String] = []
 
-        var currentKey = remaining.contains(startKey) ? startKey : keys[0]
+        let startLocation = ShootLocation.lookup(key: startKey) ?? ShootLocation.catalog[0]
+
+        let currentKey: String
+        if remaining.contains(startKey) {
+            currentKey = startKey
+        } else {
+            currentKey = remaining.min { lhs, rhs in
+                guard let locL = ShootLocation.lookup(key: lhs),
+                      let locR = ShootLocation.lookup(key: rhs) else { return false }
+                return startLocation.clLocation.distance(from: locL.clLocation)
+                    < startLocation.clLocation.distance(from: locR.clLocation)
+            } ?? keys[0]
+        }
+
         ordered.append(currentKey)
         remaining.remove(currentKey)
+        var cursor = currentKey
 
         while !remaining.isEmpty {
-            guard let current = ShootLocation.lookup(key: currentKey) else { break }
+            guard let current = ShootLocation.lookup(key: cursor) else { break }
             let nearest = remaining.min { lhs, rhs in
                 guard let locL = ShootLocation.lookup(key: lhs),
                       let locR = ShootLocation.lookup(key: rhs) else { return false }
-                return current.clLocation.distance(from: locL.clLocation) < current.clLocation.distance(from: locR.clLocation)
+                return current.clLocation.distance(from: locL.clLocation)
+                    < current.clLocation.distance(from: locR.clLocation)
             }
             guard let nearest else { break }
             ordered.append(nearest)
             remaining.remove(nearest)
-            currentKey = nearest
+            cursor = nearest
         }
 
         return ordered

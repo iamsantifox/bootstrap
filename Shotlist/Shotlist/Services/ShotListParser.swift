@@ -19,12 +19,13 @@ enum ShotListParser {
         var hasSeenCategory = false
         var shotOrder = 0
         var lastRootShotID: UUID?
+        var skippedTitleLine = projectTitle == nil
 
         for line in lines where !line.isEmpty {
             if let parsed = extractShot(from: line) {
                 guard let category = currentCategory else { continue }
 
-                var title = parsed.title
+                let title = parsed.title
                 var parentID: UUID?
                 var locationKey = ShotMetadataExtractor.locationKey(from: title, categoryName: category.name)
                 var shotSize = ShotMetadataExtractor.shotSize(from: title, categoryName: category.name)
@@ -32,13 +33,18 @@ enum ShotListParser {
 
                 if ShotMetadataExtractor.isVariantTitle(title), let parent = lastRootShotID {
                     parentID = parent
-                    if shotSize == .unknown, let parentShot = shots.first(where: { $0.id == parent }) {
-                        locationKey = parentShot.locationKey
+                    if let parentShot = shots.first(where: { $0.id == parent }) {
+                        locationKey = parentShot.locationKey ?? locationKey
+                        cameraAngle = parentShot.cameraAngle == .unknown ? cameraAngle : parentShot.cameraAngle
                         switch title.lowercased() {
-                        case "medium", "keski": shotSize = .medium
-                        case "wide", "laaja": shotSize = .wide
-                        case "close / detail", "close", "detail", "tiukempana": shotSize = .closeUp
-                        default: break
+                        case "medium", "keski":
+                            shotSize = .medium
+                        case "wide", "laaja":
+                            shotSize = .wide
+                        case "close / detail", "close", "detail", "tiukempana":
+                            shotSize = .closeUp
+                        default:
+                            break
                         }
                     }
                 }
@@ -64,10 +70,12 @@ enum ShotListParser {
 
             if inferredTitle == nil, !hasSeenCategory {
                 inferredTitle = line
+                skippedTitleLine = true
                 continue
             }
 
-            if projectTitle != nil, !hasSeenCategory, isTitleDuplicate(line, projectTitle: projectTitle!) {
+            if !skippedTitleLine, !hasSeenCategory, isLikelyPastedTitle(line, projectTitle: projectTitle) {
+                skippedTitleLine = true
                 continue
             }
 
@@ -149,21 +157,33 @@ enum ShotListParser {
     }
 
     private static func isBriefLine(_ line: String) -> Bool {
+        if isCategoryHeader(line) { return false }
         let letters = line.filter(\.isLetter)
         guard !letters.isEmpty else { return false }
         let lowercaseRatio = Double(letters.filter(\.isLowercase).count) / Double(letters.count)
         return lowercaseRatio > 0.4
     }
 
-    private static func isTitleDuplicate(_ line: String, projectTitle: String) -> Bool {
-        let normalizedLine = line.lowercased().replacingOccurrences(of: " ", with: "")
-        let normalizedTitle = projectTitle.lowercased().replacingOccurrences(of: " ", with: "")
-        if normalizedLine == normalizedTitle { return true }
-        if normalizedLine.contains(normalizedTitle.prefix(10)) { return true }
+    /// Only skip the first pasted title line when it matches the user-supplied project title.
+    /// Must not treat category headers (DRONE, NORDIS, etc.) as title duplicates.
+    private static func isLikelyPastedTitle(_ line: String, projectTitle: String?) -> Bool {
+        guard let projectTitle, !projectTitle.isEmpty else { return false }
 
-        let letters = line.filter(\.isLetter)
-        guard !letters.isEmpty else { return false }
-        let uppercaseRatio = Double(letters.filter(\.isUppercase).count) / Double(letters.count)
-        return uppercaseRatio > 0.7
+        let normalizedLine = normalize(line)
+        let normalizedTitle = normalize(projectTitle)
+        if normalizedLine == normalizedTitle { return true }
+
+        let prefixLength = min(16, normalizedTitle.count)
+        guard prefixLength >= 8 else { return false }
+        return normalizedLine.hasPrefix(String(normalizedTitle.prefix(prefixLength)))
+            || normalizedTitle.hasPrefix(String(normalizedLine.prefix(prefixLength)))
+    }
+
+    private static func normalize(_ value: String) -> String {
+        value
+            .lowercased()
+            .replacingOccurrences(of: "–", with: "-")
+            .replacingOccurrences(of: "—", with: "-")
+            .filter { $0.isLetter || $0.isNumber || $0 == "-" }
     }
 }

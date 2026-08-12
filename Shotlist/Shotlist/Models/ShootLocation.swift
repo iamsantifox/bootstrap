@@ -24,42 +24,42 @@ struct ShootLocation: Identifiable, Hashable, Codable {
             name: "Töölöntori",
             latitude: 60.1795,
             longitude: 24.9245,
-            keywords: ["töölöntori", "runeberginkatu", "topeliuksenkatu", "töölöntor"]
+            keywords: ["töölöntori", "töölöntor", "runeberginkatu", "runebergin", "topeliuksenkatu", "topeliuksen"]
         ),
         ShootLocation(
             key: "nordis",
             name: "Nordis / Helsingin jäähalli",
             latitude: 60.1808,
             longitude: 24.9265,
-            keywords: ["nordis", "jäähalli", "jaahalli", "helsingin jäähalli", "halli"]
+            keywords: ["nordis", "jäähalli", "jaahalli", "helsingin jäähalli"]
         ),
         ShootLocation(
             key: "mannerheimintie",
             name: "Mannerheimintie / Yliopiston Apteekki",
             latitude: 60.1810,
             longitude: 24.9195,
-            keywords: ["mannerheimintie", "apteekki", "yliopiston apteekki"]
+            keywords: ["mannerheimintie", "mannerheimin", "apteekki", "apteekin", "yliopiston apteek"]
         ),
         ShootLocation(
             key: "nordenskildinkatu",
             name: "Nordenskiöldinkatu",
             latitude: 60.1815,
             longitude: 24.9270,
-            keywords: ["nordenskiöldinkatu", "nordenskildinkatu", "urheilukatu"]
+            keywords: ["nordenskiöldinkatu", "nordenskiöldinkad", "nordenskildinkatu", "nordenskildinkad", "urheilukatu", "urheilukad"]
         ),
         ShootLocation(
             key: "reijolankatu",
             name: "Reijolankatu",
             latitude: 60.1788,
             longitude: 24.9210,
-            keywords: ["reijolankatu"]
+            keywords: ["reijolankatu", "reijolankad"]
         ),
         ShootLocation(
             key: "olympiastadion",
             name: "Olympiastadion",
             latitude: 60.1850,
             longitude: 24.9265,
-            keywords: ["olympiastadion", "stadionin torni", "stadion"]
+            keywords: ["olympiastadion", "olympiastadioni", "stadionin torni"]
         ),
         ShootLocation(
             key: "kisahalli",
@@ -83,7 +83,8 @@ struct ShootLocation: Identifiable, Hashable, Codable {
 }
 
 struct RouteStop: Identifiable, Equatable, Hashable {
-    let id: UUID
+    /// Stable across recalculations so map selection survives route refresh.
+    var id: String { location.key }
     let location: ShootLocation
     let shots: [Shot]
     let order: Int

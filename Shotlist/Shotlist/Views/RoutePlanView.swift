@@ -4,7 +4,7 @@ import MapKit
 struct RoutePlanView: View {
     @EnvironmentObject private var store: ShotListStore
     @State private var cameraPosition: MapCameraPosition = .automatic
-    @State private var selectedStop: RouteStop?
+    @State private var selectedStopKey: String?
     @State private var showShareSheet = false
     @State private var pdfData: Data?
 
@@ -12,14 +12,20 @@ struct RoutePlanView: View {
 
     var body: some View {
         Group {
-            if let project = store.selectedProject, let plan {
-                routeContent(project: project, plan: plan)
-            } else {
+            if store.selectedProject == nil {
                 ContentUnavailableView {
                     Label("No Route", systemImage: "map")
                 } description: {
                     Text("Import a shot list to generate a walking route.")
                 }
+            } else if let plan, plan.stops.isEmpty {
+                ContentUnavailableView {
+                    Label("All Shots Done", systemImage: "checkmark.circle")
+                } description: {
+                    Text("Every shot is checked off. Uncheck shots to rebuild the route.")
+                }
+            } else if let project = store.selectedProject, let plan {
+                routeContent(project: project, plan: plan)
             }
         }
         .navigationTitle("Walk Route")
@@ -49,6 +55,9 @@ struct RoutePlanView: View {
         .onAppear {
             fitMapToRoute()
         }
+        .onChange(of: store.cachedRoutePlan?.totalMinutes) { _, _ in
+            fitMapToRoute()
+        }
     }
 
     @ViewBuilder
@@ -65,19 +74,19 @@ struct RoutePlanView: View {
     }
 
     private func mapSection(plan: RoutePlan) -> some View {
-        Map(position: $cameraPosition, selection: $selectedStop) {
+        Map(position: $cameraPosition, selection: $selectedStopKey) {
             ForEach(plan.stops) { stop in
                 Annotation(stop.location.name, coordinate: stop.location.coordinate) {
                     ZStack {
                         Circle()
-                            .fill(.orange)
+                            .fill(selectedStopKey == stop.id ? Color.orange : Color.orange.opacity(0.85))
                             .frame(width: 28, height: 28)
                         Text("\(stop.order)")
                             .font(.caption2.bold())
                             .foregroundStyle(.white)
                     }
                 }
-                .tag(stop)
+                .tag(stop.id)
             }
 
             if plan.stops.count >= 2 {
@@ -156,8 +165,8 @@ struct RoutePlanView: View {
                 .padding(.horizontal)
 
             ForEach(plan.stops) { stop in
-                RouteStopCard(stop: stop, isSelected: selectedStop?.id == stop.id)
-                    .onTapGesture { selectedStop = stop }
+                RouteStopCard(stop: stop, isSelected: selectedStopKey == stop.id)
+                    .onTapGesture { selectedStopKey = stop.id }
             }
         }
     }
@@ -167,13 +176,15 @@ struct RoutePlanView: View {
         let coords = plan.stops.map(\.location.coordinate)
         let lats = coords.map(\.latitude)
         let lons = coords.map(\.longitude)
+        guard let minLat = lats.min(), let maxLat = lats.max(),
+              let minLon = lons.min(), let maxLon = lons.max() else { return }
         let center = CLLocationCoordinate2D(
-            latitude: (lats.min()! + lats.max()!) / 2,
-            longitude: (lons.min()! + lons.max()!) / 2
+            latitude: (minLat + maxLat) / 2,
+            longitude: (minLon + maxLon) / 2
         )
         let span = MKCoordinateSpan(
-            latitudeDelta: max(0.01, (lats.max()! - lats.min()!) * 1.4),
-            longitudeDelta: max(0.01, (lons.max()! - lons.min()!) * 1.4)
+            latitudeDelta: max(0.01, (maxLat - minLat) * 1.4),
+            longitudeDelta: max(0.01, (maxLon - minLon) * 1.4)
         )
         cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
     }

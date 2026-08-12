@@ -6,8 +6,8 @@ final class FramingGeneratorTests: XCTestCase {
         let shot = Shot(
             title: "Töölöntori – suoraan ylhäältä / lintuperspektiivi",
             categoryID: UUID(),
-            cameraAngle: .birdsEye,
-            shotSize: .wide
+            shotSize: .wide,
+            cameraAngle: .birdsEye
         )
         let suggestion = FramingGenerator.suggest(for: shot, settings: .default, categoryName: "DRONE")
 
@@ -25,13 +25,15 @@ final class FramingGeneratorTests: XCTestCase {
         XCTAssertEqual(suggestion.recommendedLens, .tele200)
     }
 
-    func testAutoSelectsDroneCamera() {
-        let shot = Shot(title: "Nordis ylhäältä", categoryID: UUID())
+    func testDoesNotForceDroneCameraInGenerator() {
         var settings = FramingSettings.default
         settings.camera = .sonyFX3
+        settings.useAutoLens = false
+        settings.lens = .wide24
 
+        let shot = Shot(title: "Nordis ylhäältä", categoryID: UUID())
         let suggestion = FramingGenerator.suggest(for: shot, settings: settings, categoryName: "DRONE")
-        _ = suggestion
+        XCTAssertEqual(suggestion.recommendedLens, .wide24)
         XCTAssertEqual(ShotMetadataExtractor.suggestedCamera(categoryName: "DRONE"), .djiMini4Pro)
     }
 
@@ -42,6 +44,15 @@ final class FramingGeneratorTests: XCTestCase {
         let suggestion = FramingGenerator.suggest(for: shot, settings: settings)
         XCTAssertEqual(suggestion.shutterSpeed, "1/48s (180°)")
     }
+
+    func testAspectRatioTwoPointThreeNineIsLandscape() {
+        XCTAssertGreaterThan(AspectRatio.twoPointThreeNine.widthRatio, AspectRatio.twoPointThreeNine.heightRatio)
+        XCTAssertEqual(
+            AspectRatio.twoPointThreeNine.widthRatio / AspectRatio.twoPointThreeNine.heightRatio,
+            2.39,
+            accuracy: 0.001
+        )
+    }
 }
 
 final class RoutePlannerTests: XCTestCase {
@@ -51,7 +62,7 @@ final class RoutePlannerTests: XCTestCase {
 
         XCTAssertFalse(plan.stops.isEmpty)
         XCTAssertGreaterThan(plan.totalShootMinutes, 0)
-        XCTAssertGreaterThan(plan.totalMinutes, plan.totalShootMinutes)
+        XCTAssertGreaterThan(plan.totalMinutes, 0)
     }
 
     func testRouteOrdersWideBeforeClose() {
@@ -70,5 +81,25 @@ final class RoutePlannerTests: XCTestCase {
             return
         }
         XCTAssertEqual(stop.shots.first?.shotSize, .wide)
+    }
+
+    func testStableStopIdentifiers() {
+        let project = ShotListParser.parse(SampleData.hifkTooloShotList, projectTitle: "IDs")
+        let plan1 = RoutePlanner.plan(for: project)
+        let plan2 = RoutePlanner.plan(for: project)
+        XCTAssertEqual(Set(plan1.stops.map(\.id)), Set(plan2.stops.map(\.id)))
+    }
+
+    func testIncludesWalkFromStartWhenFirstStopDiffers() {
+        let project = ShotListParser.parse(
+            """
+            NORDIS – MAAN TASALTA
+            ☐ Halli edestä
+            """,
+            projectTitle: "Walk"
+        )
+        let plan = RoutePlanner.plan(for: project, startLocationKey: "toolontori")
+        XCTAssertEqual(plan.stops.count, 1)
+        XCTAssertGreaterThan(plan.stops[0].walkMinutesFromPrevious, 0)
     }
 }

@@ -47,16 +47,21 @@ final class ShotListParserTests: XCTestCase {
         XCTAssertEqual(project.shots.count, 1)
     }
 
-    func testSkipsDuplicateTitleWhenProjectTitleProvided() {
+    func testDoesNotSwallowCategoriesWhenProjectTitleProvided() {
         let text = """
         HIFK-FILMI – B-ROLL / LISÄKUVAT TÖÖLÖ
+        Tarvitaan vielä loppuleikkausta varten.
         DRONE
         ☐ Drone shot one
+        NORDIS – MAAN TASALTA
+        ☐ Halli edestä
         """
 
         let project = ShotListParser.parse(text, projectTitle: "HIFK Production")
-        XCTAssertEqual(project.categories.count, 1)
-        XCTAssertEqual(project.categories.first?.name, "DRONE")
+        XCTAssertEqual(project.categories.count, 2)
+        XCTAssertEqual(project.categories.map(\.name), ["DRONE", "NORDIS – MAAN TASALTA"])
+        XCTAssertEqual(project.shots.count, 2)
+        XCTAssertTrue(project.brief.contains("Tarvitaan"))
     }
 
     func testParsesCompletedCheckbox() {
@@ -71,7 +76,7 @@ final class ShotListParserTests: XCTestCase {
         XCTAssertFalse(project.shots.first { $0.title == "Todo shot" }?.isCompleted == true)
     }
 
-    func testGroupsVariantShots() {
+    func testGroupsVariantShotsAndInheritsLocation() {
         let text = """
         REIJOLANKATU
         ☐ Reijolankadun kulma – wide
@@ -82,7 +87,45 @@ final class ShotListParserTests: XCTestCase {
         let project = ShotListParser.parse(text)
         let root = project.shots.first { $0.title.contains("kulma") }
         XCTAssertNotNil(root)
+        XCTAssertEqual(root?.locationKey, "reijolankatu")
+
         let variants = project.shots.filter { $0.parentShotID == root?.id }
         XCTAssertEqual(variants.count, 2)
+        XCTAssertTrue(variants.allSatisfy { $0.locationKey == "reijolankatu" })
+        XCTAssertEqual(variants.map(\.shotSize), [.medium, .closeUp])
+    }
+}
+
+final class LocationExtractorTests: XCTestCase {
+    func testTitleMatchBeatsCategoryAmbiguity() {
+        let key = LocationExtractor.resolveLocationKey(
+            title: "Yliopiston Apteekin kulma – laaja",
+            categoryName: "MANNERHEIMINTIE / NORDENSKIÖLDINKATU"
+        )
+        XCTAssertEqual(key, "mannerheimintie")
+    }
+
+    func testNordenskioldTitleMapsCorrectly() {
+        let key = LocationExtractor.resolveLocationKey(
+            title: "Nordenskiöldinkadun suunta",
+            categoryName: "MANNERHEIMINTIE / NORDENSKIÖLDINKATU"
+        )
+        XCTAssertEqual(key, "nordenskildinkatu")
+    }
+
+    func testHalliShotMapsToNordis() {
+        let key = LocationExtractor.resolveLocationKey(
+            title: "Halli edestä",
+            categoryName: "NORDIS – MAAN TASALTA"
+        )
+        XCTAssertEqual(key, "nordis")
+    }
+
+    func testSlashCategoryDefaultsToPrimarySegment() {
+        let key = LocationExtractor.resolveLocationKey(
+            title: "Liikenne kulkee foregroundissa",
+            categoryName: "MANNERHEIMINTIE / NORDENSKIÖLDINKATU"
+        )
+        XCTAssertEqual(key, "mannerheimintie")
     }
 }

@@ -2,16 +2,17 @@ import Foundation
 
 enum FramingGenerator {
     static func suggest(for shot: Shot, settings: FramingSettings, categoryName: String = "") -> FramingSuggestion {
-        var effectiveSettings = settings
-        if let suggestedCamera = ShotMetadataExtractor.suggestedCamera(categoryName: categoryName) {
-            effectiveSettings.camera = suggestedCamera
-            let available = LensOption.availableLenses(for: suggestedCamera)
-            if !available.contains(effectiveSettings.lens) {
-                effectiveSettings.lens = available[0]
-            }
-        }
+        // Settings from the UI are authoritative. Category-based camera suggestions
+        // belong in the view layer so user overrides are respected.
+        _ = categoryName
 
         let inferredStyle = inferFramingStyle(from: shot.title, shotSize: shot.shotSize)
+        let available = LensOption.availableLenses(for: settings.camera)
+        var effectiveSettings = settings
+        if !available.contains(effectiveSettings.lens) {
+            effectiveSettings.lens = available[0]
+        }
+
         let lens = effectiveSettings.useAutoLens
             ? selectLens(for: inferredStyle, settings: effectiveSettings)
             : effectiveSettings.lens
